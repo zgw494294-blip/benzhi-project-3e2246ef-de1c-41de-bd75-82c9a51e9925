@@ -7,16 +7,10 @@ import (
 	"benzhi-project-3e2246ef-de1c-41de-bd75-82c9a51e9925/internal/domain"
 )
 
-type Engine struct {
-	coverageScratch []domain.ConsentCoverageDetail
-	segmentScratch  []string
-}
+type Engine struct{}
 
 func New() *Engine {
-	return &Engine{
-		coverageScratch: make([]domain.ConsentCoverageDetail, 0, 8),
-		segmentScratch:  make([]string, 0, 16),
-	}
+	return &Engine{}
 }
 
 func (e *Engine) Blockers(c *domain.CorpusCase, at time.Time) []Issue {
@@ -58,18 +52,19 @@ func (e *Engine) GenerateAll(c *domain.CorpusCase, at time.Time) (map[string]dom
 }
 
 func (e *Engine) coverageDetails(c *domain.CorpusCase, at time.Time) []domain.ConsentCoverageDetail {
-	e.coverageScratch = e.coverageScratch[:0]
-	e.coverageScratch = append(e.coverageScratch, c.ConsentCoverage(at).Speakers...)
-	return e.coverageScratch
+	coverage := c.ConsentCoverage(at).Speakers
+	details := make([]domain.ConsentCoverageDetail, len(coverage))
+	copy(details, coverage)
+	return details
 }
 
 func (e *Engine) sortedSegmentIDs(c *domain.CorpusCase) []string {
-	e.segmentScratch = e.segmentScratch[:0]
+	segmentIDs := make([]string, 0, len(c.Segments))
 	for id := range c.Segments {
-		e.segmentScratch = append(e.segmentScratch, id)
+		segmentIDs = append(segmentIDs, id)
 	}
-	sort.Slice(e.segmentScratch, func(i, j int) bool {
-		left, right := c.Segments[e.segmentScratch[i]], c.Segments[e.segmentScratch[j]]
+	sort.Slice(segmentIDs, func(i, j int) bool {
+		left, right := c.Segments[segmentIDs[i]], c.Segments[segmentIDs[j]]
 		if left.RecordingID != right.RecordingID {
 			return left.RecordingID < right.RecordingID
 		}
@@ -78,5 +73,5 @@ func (e *Engine) sortedSegmentIDs(c *domain.CorpusCase) []string {
 		}
 		return left.SegmentID < right.SegmentID
 	})
-	return e.segmentScratch
+	return segmentIDs
 }
