@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 
+	"benzhi-project-3e2246ef-de1c-41de-bd75-82c9a51e9925/internal/domain"
 	"benzhi-project-3e2246ef-de1c-41de-bd75-82c9a51e9925/internal/redaction"
 )
 
@@ -33,13 +34,33 @@ func (s *Service) cachedReleasePreview(caseID string) (redaction.ReleasePreview,
 	s.previewMu.RLock()
 	defer s.previewMu.RUnlock()
 	preview, found := s.previews[caseID]
-	return preview, found
+	if !found {
+		return redaction.ReleasePreview{}, false
+	}
+	return cloneReleasePreview(preview), true
 }
 
 func (s *Service) cacheReleasePreview(caseID string, preview redaction.ReleasePreview) {
 	s.previewMu.Lock()
 	defer s.previewMu.Unlock()
-	s.previews[caseID] = preview
+	s.previews[caseID] = cloneReleasePreview(preview)
+}
+
+func (s *Service) invalidateReleasePreview(caseID string) {
+	s.previewMu.Lock()
+	defer s.previewMu.Unlock()
+	delete(s.previews, caseID)
+}
+
+func cloneReleasePreview(p redaction.ReleasePreview) redaction.ReleasePreview {
+	return redaction.ReleasePreview{
+		Available:      p.Available,
+		Status:         p.Status,
+		Items:          append([]domain.FrozenItem(nil), p.Items...),
+		ItemCount:      p.ItemCount,
+		ManifestDigest: p.ManifestDigest,
+		Blockers:       append([]redaction.Issue(nil), p.Blockers...),
+	}
 }
 
 func (s *Service) VerifyCredential(ctx context.Context, credentialID string) (CredentialVerification, error) {

@@ -109,6 +109,7 @@ func (s *Service) executeNew(request CommandRequest, requestHash string) (Comman
 	if err := s.repository.Commit(commit); err != nil {
 		return CommandResult{}, err
 	}
+	s.invalidateReleasePreview(request.CaseID)
 	return result, nil
 }
 
