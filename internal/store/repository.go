@@ -115,14 +115,31 @@ func (r *Repository) Commit(request CommitRequest) error {
 	if err := r.log.append(record); err != nil {
 		return err
 	}
+	// Once the event log is fsynced, the command is durably committed: the event log is the
+	// source of truth, and the in-memory projection, immutable append-only records, and
+	// projection snapshot are all derived from it. Applying the record to memory first
+	// ensures queries and idempotent replays observe the new revision immediately.
+	// Failures in the subsequent derived writes must not flip the command back to a failed
+	// state, otherwise the same command would surface as both failed (commit error) and
+	// committed (queryable revision plus cached idempotent result). Startup recovery
+	// (event-log replay and immutable-record reconciliation) repairs any derived artifacts
+	// that did not get written, so they are best-effort relative to the committed event.
 	applyRecord(&r.state, record)
-	if request.Manifest != nil {
-		if err := appendImmutable(filepath.Join(r.directory, "manifests.jsonl"), "manifest", request.Manifest.CaseID, request.Manifest); err != nil {
+	_ = r.writeDerivedArtifacts(record)
+	return nil
+}
+
+// writeDerivedArtifacts persists the immutable append-only records and the projection snapshot
+// derived from an already-fsynced event. Its failure does not invalidate the commit; the next
+// startup reconciles missing or stale derived artifacts from the event log.
+func (r *Repository) writeDerivedArtifacts(record eventRecord) error {
+	if record.Manifest != nil {
+		if err := appendImmutable(filepath.Join(r.directory, "manifests.jsonl"), "manifest", record.Manifest.CaseID, record.Manifest); err != nil {
 			return err
 		}
 	}
-	if request.Credential != nil {
-		if err := appendImmutable(filepath.Join(r.directory, "credentials.jsonl"), "credential", request.Credential.CredentialID, request.Credential); err != nil {
+	if record.Credential != nil {
+		if err := appendImmutable(filepath.Join(r.directory, "credentials.jsonl"), "credential", record.Credential.CredentialID, record.Credential); err != nil {
 			return err
 		}
 	}
