@@ -84,49 +84,65 @@ func (r *Repository) Commit(request CommitRequest) error {
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	current := r.state.Cases[request.Case.CaseID]
-	currentRevision := uint64(0)
-	if current != nil {
-		currentRevision = current.Revision
-	}
-	if currentRevision != request.ExpectedRevision {
-		return domain.Conflict("revision_conflict", "修订号冲突：当前为 %d，期望为 %d", currentRevision, request.ExpectedRevision)
-	}
-	if request.Case.Revision != currentRevision+1 || request.Event.Revision != request.Case.Revision {
-		return fmt.Errorf("领域提交必须恰好推进一个修订号")
-	}
-	index := idempotencyIndex(request.Case.CaseID, request.IdempotencyKey)
-	if existing, ok := r.state.Idempotency[index]; ok {
-		if existing.RequestHash != request.RequestHash {
-			return domain.Conflict("idempotency_mismatch", "相同幂等键对应了不同请求")
+	// The in-memory projection may be stale when several repository instances
+	// share one data directory. The cross-process lock makes the read-scan and
+	// append atomic with respect to concurrent processes, and rebuilding the
+	// projection from the event log yields the authoritative next global
+	// sequence and case revision. On success the local state is refreshed so
+	// subsequent reads observe the durable projection.
+	return withDirectoryLock(r.directory, func() error {
+		current, err := recoverProjection(r.log, r.snapshotPath)
+		if err != nil {
+			return fmt.Errorf("重建投影失败: %w", err)
 		}
+		prior := current.Cases[request.Case.CaseID]
+		currentRevision := uint64(0)
+		if prior != nil {
+			currentRevision = prior.Revision
+		}
+		if currentRevision != request.ExpectedRevision {
+			return domain.Conflict("revision_conflict", "修订号冲突：当前为 %d，期望为 %d", currentRevision, request.ExpectedRevision)
+		}
+		if request.Case.Revision != currentRevision+1 || request.Event.Revision != request.Case.Revision {
+			return fmt.Errorf("领域提交必须恰好推进一个修订号")
+		}
+		index := idempotencyIndex(request.Case.CaseID, request.IdempotencyKey)
+		if existing, ok := current.Idempotency[index]; ok {
+			if existing.RequestHash != request.RequestHash {
+				return domain.Conflict("idempotency_mismatch", "相同幂等键对应了不同请求")
+			}
+			return nil
+		}
+		if request.Credential != nil {
+			if _, exists := current.Credentials[request.Credential.CredentialID]; exists {
+				return domain.Conflict("credential_exists", "开放凭据不可覆盖")
+			}
+			if _, exists := current.Manifests[request.Case.CaseID]; exists {
+				return domain.Conflict("manifest_exists", "冻结清单不可覆盖")
+			}
+		}
+		cached := CachedResult{CaseID: request.Case.CaseID, IdempotencyKey: request.IdempotencyKey, RequestHash: request.RequestHash, Response: append(json.RawMessage(nil), request.Response...), StoredAt: time.Now().UTC()}
+		record := eventRecord{Sequence: current.LastSequence + 1, Event: request.Event, Case: request.Case.Clone(), Cached: cached, Manifest: request.Manifest, Credential: request.Credential}
+		if err := r.log.append(record); err != nil {
+			return err
+		}
+		applyRecord(&current, record)
+		if request.Manifest != nil {
+			if err := appendImmutable(filepath.Join(r.directory, "manifests.jsonl"), "manifest", request.Manifest.CaseID, request.Manifest); err != nil {
+				return err
+			}
+		}
+		if request.Credential != nil {
+			if err := appendImmutable(filepath.Join(r.directory, "credentials.jsonl"), "credential", request.Credential.CredentialID, request.Credential); err != nil {
+				return err
+			}
+		}
+		if err := writeSnapshot(r.snapshotPath, current); err != nil {
+			return err
+		}
+		r.state = current
 		return nil
-	}
-	if request.Credential != nil {
-		if _, exists := r.state.Credentials[request.Credential.CredentialID]; exists {
-			return domain.Conflict("credential_exists", "开放凭据不可覆盖")
-		}
-		if _, exists := r.state.Manifests[request.Case.CaseID]; exists {
-			return domain.Conflict("manifest_exists", "冻结清单不可覆盖")
-		}
-	}
-	cached := CachedResult{CaseID: request.Case.CaseID, IdempotencyKey: request.IdempotencyKey, RequestHash: request.RequestHash, Response: append(json.RawMessage(nil), request.Response...), StoredAt: time.Now().UTC()}
-	record := eventRecord{Sequence: r.state.LastSequence + 1, Event: request.Event, Case: request.Case.Clone(), Cached: cached, Manifest: request.Manifest, Credential: request.Credential}
-	if err := r.log.append(record); err != nil {
-		return err
-	}
-	applyRecord(&r.state, record)
-	if request.Manifest != nil {
-		if err := appendImmutable(filepath.Join(r.directory, "manifests.jsonl"), "manifest", request.Manifest.CaseID, request.Manifest); err != nil {
-			return err
-		}
-	}
-	if request.Credential != nil {
-		if err := appendImmutable(filepath.Join(r.directory, "credentials.jsonl"), "credential", request.Credential.CredentialID, request.Credential); err != nil {
-			return err
-		}
-	}
-	return writeSnapshot(r.snapshotPath, r.state)
+	})
 }
 
 func (r *Repository) GetCredential(id string) (domain.ReleaseCredential, domain.FrozenManifest, error) {
