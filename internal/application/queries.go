@@ -33,7 +33,12 @@ func (s *Service) VerifyCredential(ctx context.Context, credentialID string) (Cr
 	if err != nil {
 		return CredentialVerification{}, err
 	}
-	valid := redaction.VerifyManifest(manifest) && credential.ManifestDigest == manifest.Digest && credential.FrozenRevision == manifest.FrozenRevision
+	// 凭据有效性必须依据一致且未被篡改的案卷事实判定：凭据与冻结清单需归属同一案卷，
+	// 清单摘要可由冻结项重新计算，且凭据摘要、冻结修订号均与冻结清单一致。
+	valid := credential.CaseID == manifest.CaseID &&
+		redaction.VerifyManifest(manifest) &&
+		credential.ManifestDigest == manifest.Digest &&
+		credential.FrozenRevision == manifest.FrozenRevision
 	reason := "凭据和冻结清单摘要一致"
 	if !valid {
 		reason = "凭据或冻结清单完整性校验失败"

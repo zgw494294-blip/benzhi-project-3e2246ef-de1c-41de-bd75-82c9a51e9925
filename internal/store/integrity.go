@@ -24,8 +24,10 @@ func reconcileImmutable(directory string, state *projection) error {
 	if err != nil {
 		return err
 	}
+	// 事件日志是事实来源：恢复后的投影中的清单与凭据必须保留为权威内容。
+	// 只追加派生记录仅用于在异常退出后补齐未写完的条目，绝不允许覆盖事件投影。
 	for id, payload := range manifestRecords {
-		_, exists := state.Manifests[id]
+		expected, exists := state.Manifests[id]
 		if !exists {
 			return fmt.Errorf("只追加清单 %s 不存在于事件投影", id)
 		}
@@ -33,10 +35,12 @@ func reconcileImmutable(directory string, state *projection) error {
 		if err := json.Unmarshal(payload, &recorded); err != nil {
 			return err
 		}
-		state.Manifests[id] = recorded
+		if !sameJSON(recorded, expected) {
+			return fmt.Errorf("只追加清单 %s 与事件投影分叉", id)
+		}
 	}
 	for id, payload := range credentialRecords {
-		_, exists := state.Credentials[id]
+		expected, exists := state.Credentials[id]
 		if !exists {
 			return fmt.Errorf("只追加凭据 %s 不存在于事件投影", id)
 		}
@@ -44,7 +48,9 @@ func reconcileImmutable(directory string, state *projection) error {
 		if err := json.Unmarshal(payload, &recorded); err != nil {
 			return err
 		}
-		state.Credentials[id] = recorded
+		if !sameJSON(recorded, expected) {
+			return fmt.Errorf("只追加凭据 %s 与事件投影分叉", id)
+		}
 	}
 	for id, manifest := range state.Manifests {
 		if _, exists := manifestRecords[id]; !exists {
