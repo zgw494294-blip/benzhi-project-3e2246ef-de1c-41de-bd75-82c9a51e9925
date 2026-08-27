@@ -15,14 +15,31 @@ func (s *Service) GetCase(ctx context.Context, caseID string) (CaseView, error) 
 		return CaseView{}, err
 	}
 	now := s.now().UTC()
-	preview, err := s.redactor.ReleasePreview(c, now)
-	if err != nil {
-		return CaseView{}, err
+	preview, found := s.cachedReleasePreview(caseID)
+	if !found {
+		preview, err = s.redactor.ReleasePreview(c, now)
+		if err != nil {
+			return CaseView{}, err
+		}
+		s.cacheReleasePreview(caseID, preview)
 	}
 	return CaseView{
 		Case: c, Blockers: s.redactor.Blockers(c, now),
 		ConsentCoverage: c.ConsentCoverage(now), ReleasePreview: preview,
 	}, nil
+}
+
+func (s *Service) cachedReleasePreview(caseID string) (redaction.ReleasePreview, bool) {
+	s.previewMu.RLock()
+	defer s.previewMu.RUnlock()
+	preview, found := s.previews[caseID]
+	return preview, found
+}
+
+func (s *Service) cacheReleasePreview(caseID string, preview redaction.ReleasePreview) {
+	s.previewMu.Lock()
+	defer s.previewMu.Unlock()
+	s.previews[caseID] = preview
 }
 
 func (s *Service) VerifyCredential(ctx context.Context, credentialID string) (CredentialVerification, error) {

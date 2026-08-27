@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"sync"
 	"time"
 
 	"benzhi-project-3e2246ef-de1c-41de-bd75-82c9a51e9925/internal/domain"
@@ -19,11 +20,19 @@ type Service struct {
 	repository *store.Repository
 	redactor   *redaction.Engine
 	locks      *caseLocks
+	previewMu  sync.RWMutex
+	previews   map[string]redaction.ReleasePreview
 	now        func() time.Time
 }
 
 func NewService(repository *store.Repository, redactor *redaction.Engine) *Service {
-	return &Service{repository: repository, redactor: redactor, locks: newCaseLocks(), now: time.Now}
+	return &Service{
+		repository: repository,
+		redactor:   redactor,
+		locks:      newCaseLocks(),
+		previews:   make(map[string]redaction.ReleasePreview),
+		now:        time.Now,
+	}
 }
 
 func (s *Service) Execute(ctx context.Context, request CommandRequest) (CommandResult, error) {
