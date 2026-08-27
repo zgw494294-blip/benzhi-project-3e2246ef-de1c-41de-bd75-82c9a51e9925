@@ -8,7 +8,7 @@ import (
 	"benzhi-project-3e2246ef-de1c-41de-bd75-82c9a51e9925/internal/domain"
 )
 
-func writeError(writer http.ResponseWriter, request *http.Request, err error) {
+func (a *API) writeError(writer http.ResponseWriter, request *http.Request, err error) {
 	status := http.StatusInternalServerError
 	response := apiError{Code: "internal_error", Message: "服务处理请求时发生内部错误", RequestID: requestIDFrom(request.Context())}
 	var business *domain.BusinessError
@@ -27,9 +27,9 @@ func writeError(writer http.ResponseWriter, request *http.Request, err error) {
 	} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		status, response.Code, response.Message = http.StatusRequestTimeout, "request_timeout", "请求已取消或超时"
 	}
-	writeJSON(writer, status, errorEnvelope{Error: response})
+	a.writeJSON(writer, status, errorEnvelope{Error: response})
 }
 
-func writeProtocolError(writer http.ResponseWriter, request *http.Request, status int, code, message string) {
-	writeJSON(writer, status, errorEnvelope{Error: apiError{Code: code, Message: message, RequestID: requestIDFrom(request.Context())}})
+func (a *API) writeProtocolError(writer http.ResponseWriter, request *http.Request, status int, code, message string) {
+	a.writeJSON(writer, status, errorEnvelope{Error: apiError{Code: code, Message: message, RequestID: requestIDFrom(request.Context())}})
 }

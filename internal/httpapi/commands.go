@@ -8,23 +8,23 @@ import (
 
 func (a *API) Commands(writer http.ResponseWriter, request *http.Request, caseID string) {
 	if caseID == "" {
-		writeProtocolError(writer, request, http.StatusBadRequest, "case_id_required", "caseID 不能为空")
+		a.writeProtocolError(writer, request, http.StatusBadRequest, "case_id_required", "caseID 不能为空")
 		return
 	}
 	var command application.CommandRequest
 	if err := decodeStrict(writer, request, &command); err != nil {
-		writeProtocolError(writer, request, http.StatusBadRequest, "invalid_request", err.Error())
+		a.writeProtocolError(writer, request, http.StatusBadRequest, "invalid_request", err.Error())
 		return
 	}
 	command.CaseID = caseID
 	result, err := a.service.Execute(request.Context(), command)
 	if err != nil {
-		writeError(writer, request, err)
+		a.writeError(writer, request, err)
 		return
 	}
 	status := http.StatusOK
 	if command.Command == "create_case" && !result.IdempotentReplay {
 		status = http.StatusCreated
 	}
-	writeSuccess(writer, status, result)
+	a.writeSuccess(writer, status, result)
 }

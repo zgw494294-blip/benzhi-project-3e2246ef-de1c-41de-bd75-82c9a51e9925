@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"bytes"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -9,8 +10,9 @@ import (
 )
 
 type API struct {
-	service *application.Service
-	logger  *slog.Logger
+	service        *application.Service
+	logger         *slog.Logger
+	responseBuffer bytes.Buffer
 }
 
 func New(service *application.Service, logger *slog.Logger) http.Handler {
@@ -39,10 +41,10 @@ func (a *API) route(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 	if routeExistsForOtherMethod(parts, path) {
-		writeProtocolError(writer, request, http.StatusMethodNotAllowed, "method_not_allowed", "该路由不支持当前 HTTP 方法")
+		a.writeProtocolError(writer, request, http.StatusMethodNotAllowed, "method_not_allowed", "该路由不支持当前 HTTP 方法")
 		return
 	}
-	writeProtocolError(writer, request, http.StatusNotFound, "route_not_found", "未找到请求路由")
+	a.writeProtocolError(writer, request, http.StatusNotFound, "route_not_found", "未找到请求路由")
 }
 
 func applySecurityHeaders(writer http.ResponseWriter) {

@@ -20,13 +20,17 @@ type apiError struct {
 	Details   map[string]any `json:"details,omitempty"`
 }
 
-func writeJSON(writer http.ResponseWriter, status int, value any) {
+func (a *API) writeJSON(writer http.ResponseWriter, status int, value any) {
 	writer.Header().Set("Content-Type", "application/json; charset=utf-8")
 	writer.Header().Set("X-Content-Type-Options", "nosniff")
+	a.responseBuffer.Reset()
+	if err := json.NewEncoder(&a.responseBuffer).Encode(value); err != nil {
+		return
+	}
 	writer.WriteHeader(status)
-	_ = json.NewEncoder(writer).Encode(value)
+	_, _ = writer.Write(a.responseBuffer.Bytes())
 }
 
-func writeSuccess(writer http.ResponseWriter, status int, data any) {
-	writeJSON(writer, status, successEnvelope{Data: data})
+func (a *API) writeSuccess(writer http.ResponseWriter, status int, data any) {
+	a.writeJSON(writer, status, successEnvelope{Data: data})
 }
