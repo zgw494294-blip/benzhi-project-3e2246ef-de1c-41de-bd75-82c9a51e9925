@@ -34,16 +34,9 @@ func (c *CorpusCase) Clone() *CorpusCase {
 		clone.Marks[key] = append([]RedactionMark(nil), marks...)
 	}
 	clone.ReviewHistory = append([]ReviewDecision(nil), c.ReviewHistory...)
-	for index := range clone.ReviewHistory {
-		clone.ReviewHistory[index].SampledSegmentIDs = append([]string(nil), c.ReviewHistory[index].SampledSegmentIDs...)
-		clone.ReviewHistory[index].Findings = append([]ReviewFinding(nil), c.ReviewHistory[index].Findings...)
-	}
 	clone.ReviewFindings = append([]ReviewFinding(nil), c.ReviewFindings...)
 	clone.OpenFindings = append([]ReviewFinding(nil), c.OpenFindings...)
 	clone.Audit = append([]AuditFact(nil), c.Audit...)
-	for index := range clone.Audit {
-		clone.Audit[index].Facts = cloneFacts(c.Audit[index].Facts)
-	}
 	if c.Manifest != nil {
 		manifest := *c.Manifest
 		manifest.Items = append([]FrozenItem(nil), c.Manifest.Items...)
