@@ -1,10 +1,16 @@
 package httpapi
 
 import (
+	"context"
 	"net/http"
 
 	"benzhi-project-3e2246ef-de1c-41de-bd75-82c9a51e9925/internal/application"
 )
+
+type commandOutcome struct {
+	result application.CommandResult
+	err    error
+}
 
 func (a *API) Commands(writer http.ResponseWriter, request *http.Request, caseID string) {
 	if caseID == "" {
@@ -17,14 +23,32 @@ func (a *API) Commands(writer http.ResponseWriter, request *http.Request, caseID
 		return
 	}
 	command.CaseID = caseID
-	result, err := a.service.Execute(request.Context(), command)
-	if err != nil {
+	outcomes := make(chan commandOutcome, 1)
+	commandContext := context.WithoutCancel(request.Context())
+	go func() {
+		result, err := a.service.Execute(commandContext, command)
+		outcomes <- commandOutcome{result: result, err: err}
+	}()
+	if err := request.Context().Err(); err != nil {
+		<-outcomes
 		writeError(writer, request, err)
 		return
 	}
+	var outcome commandOutcome
+	select {
+	case outcome = <-outcomes:
+	case <-request.Context().Done():
+		<-outcomes
+		writeError(writer, request, request.Context().Err())
+		return
+	}
+	if outcome.err != nil {
+		writeError(writer, request, outcome.err)
+		return
+	}
 	status := http.StatusOK
-	if command.Command == "create_case" && !result.IdempotentReplay {
+	if command.Command == "create_case" && !outcome.result.IdempotentReplay {
 		status = http.StatusCreated
 	}
-	writeSuccess(writer, status, result)
+	writeSuccess(writer, status, outcome.result)
 }
