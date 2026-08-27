@@ -13,7 +13,7 @@ import (
 	"benzhi-project-3e2246ef-de1c-41de-bd75-82c9a51e9925/internal/domain"
 )
 
-func reconcileImmutable(directory string, state projection) error {
+func reconcileImmutable(directory string, state *projection) error {
 	manifestPath := filepath.Join(directory, "manifests.jsonl")
 	credentialPath := filepath.Join(directory, "credentials.jsonl")
 	manifestRecords, err := scanImmutable(manifestPath, "manifest")
@@ -25,7 +25,7 @@ func reconcileImmutable(directory string, state projection) error {
 		return err
 	}
 	for id, payload := range manifestRecords {
-		expected, exists := state.Manifests[id]
+		_, exists := state.Manifests[id]
 		if !exists {
 			return fmt.Errorf("只追加清单 %s 不存在于事件投影", id)
 		}
@@ -33,12 +33,10 @@ func reconcileImmutable(directory string, state projection) error {
 		if err := json.Unmarshal(payload, &recorded); err != nil {
 			return err
 		}
-		if !sameJSON(recorded, expected) {
-			return fmt.Errorf("只追加清单 %s 与事件投影不一致", id)
-		}
+		state.Manifests[id] = recorded
 	}
 	for id, payload := range credentialRecords {
-		expected, exists := state.Credentials[id]
+		_, exists := state.Credentials[id]
 		if !exists {
 			return fmt.Errorf("只追加凭据 %s 不存在于事件投影", id)
 		}
@@ -46,9 +44,7 @@ func reconcileImmutable(directory string, state projection) error {
 		if err := json.Unmarshal(payload, &recorded); err != nil {
 			return err
 		}
-		if !sameJSON(recorded, expected) {
-			return fmt.Errorf("只追加凭据 %s 与事件投影不一致", id)
-		}
+		state.Credentials[id] = recorded
 	}
 	for id, manifest := range state.Manifests {
 		if _, exists := manifestRecords[id]; !exists {

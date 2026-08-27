@@ -46,7 +46,7 @@ func Open(directory string) (*Repository, error) {
 		return nil, err
 	}
 	repository.state = state
-	if err := reconcileImmutable(directory, state); err != nil {
+	if err := reconcileImmutable(directory, &state); err != nil {
 		return nil, err
 	}
 	return repository, nil
