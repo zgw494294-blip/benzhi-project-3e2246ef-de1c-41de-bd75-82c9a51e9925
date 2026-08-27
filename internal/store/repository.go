@@ -2,6 +2,7 @@ package store
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -17,7 +18,10 @@ type Repository struct {
 	log          eventLog
 	snapshotPath string
 	state        projection
+	closed       bool
 }
+
+var ErrRepositoryClosed = errors.New("仓储已关闭")
 
 type CommitRequest struct {
 	Case             *domain.CorpusCase
@@ -55,6 +59,9 @@ func Open(directory string) (*Repository, error) {
 func (r *Repository) GetCase(caseID string) (*domain.CorpusCase, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
+	if r.closed {
+		return nil, ErrRepositoryClosed
+	}
 	c, ok := r.state.Cases[caseID]
 	if !ok {
 		return nil, domain.NotFound("案卷", caseID)
@@ -65,6 +72,9 @@ func (r *Repository) GetCase(caseID string) (*domain.CorpusCase, error) {
 func (r *Repository) GetCached(caseID, key, requestHash string) (json.RawMessage, bool, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
+	if r.closed {
+		return nil, false, ErrRepositoryClosed
+	}
 	cached, ok := r.state.Idempotency[idempotencyIndex(caseID, key)]
 	if !ok {
 		return nil, false, nil
@@ -144,7 +154,14 @@ func (r *Repository) GetCredential(id string) (domain.ReleaseCredential, domain.
 }
 
 func (r *Repository) Close() error {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	return writeSnapshot(r.snapshotPath, r.state)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.closed {
+		return nil
+	}
+	if err := writeSnapshot(r.snapshotPath, r.state); err != nil {
+		return err
+	}
+	r.closed = true
+	return nil
 }
