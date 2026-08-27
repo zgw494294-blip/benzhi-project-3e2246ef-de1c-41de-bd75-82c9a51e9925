@@ -64,7 +64,7 @@ func (e *Engine) preflight(c *domain.CorpusCase, now time.Time) (domain.FrozenMa
 	items := make([]domain.FrozenItem, 0, len(c.Segments))
 	issues := make([]Issue, 0)
 	coverageBySpeaker := make(map[string]domain.ConsentCoverageDetail)
-	for _, detail := range c.ConsentCoverage(now).Speakers {
+	for _, detail := range e.coverageDetails(c, now) {
 		coverageBySpeaker[detail.SpeakerID] = detail
 	}
 	for _, finding := range c.OpenFindings {
@@ -72,7 +72,7 @@ func (e *Engine) preflight(c *domain.CorpusCase, now time.Time) (domain.FrozenMa
 			issues = append(issues, Issue{Code: "review_finding_open", ReviewRound: finding.ReviewRound, SegmentID: finding.SegmentID, MarkID: finding.MarkID, Message: "复核意见尚未闭环"})
 		}
 	}
-	for _, segmentID := range sortedSegmentIDs(c) {
+	for _, segmentID := range e.sortedSegmentIDs(c) {
 		segment := c.Segments[segmentID]
 		if detail := coverageBySpeaker[segment.SpeakerID]; detail.Status != "valid" {
 			issues = append(issues, Issue{Code: detail.BlockerCode, SegmentID: segmentID, ConsentID: detail.ConsentID, Message: "说话人当前授权不能覆盖研究开放"})
