@@ -36,7 +36,10 @@ func (s *Service) Execute(ctx context.Context, request CommandRequest) (CommandR
 	if len(request.IdempotencyKey) > 128 {
 		return CommandResult{}, domain.Validation("idempotency_key_too_long", "idempotencyKey 最长 128 字符")
 	}
-	unlock := s.locks.lock(request.CaseID)
+	unlock, err := s.locks.lock(ctx, request.CaseID)
+	if err != nil {
+		return CommandResult{}, err
+	}
 	defer unlock()
 	if err := authorize(request.Command, request.Actor); err != nil {
 		return CommandResult{}, err
